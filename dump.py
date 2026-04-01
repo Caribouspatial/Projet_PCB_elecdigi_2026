@@ -14,7 +14,7 @@ segUnit = Pin(6 Pin.OUT);
 segDiz = Pin(7 Pin.OUT); #deez nut
 
 #Variable globalequi s'incrémente
-valeur = 00
+valeur = 0
 
 #affiche in chiffre de 0 à 9 par le 4511
 def output_digit(digit):
@@ -44,10 +44,10 @@ def display_thread():
         segDiz.value(0)
 
 #Fonction incrémentation valeur
-def chance_valeur(timer):
+def change_valeur(timer):
     global ValueError
     valeur += 1
-    if valeur == 100:
+    if valeur > 100 or valeur < 0 :
         valeur = 0
 
 def init():
@@ -58,4 +58,4 @@ def main_loop():
     while True:
         pass
 init()
-main_loop()
+#pause()
