@@ -4,14 +4,14 @@ import time;
 
 #exemple du 7 seg avec un encodeur
 #Pin pour le 4511(encodeur 7 seg)
-A = Pin(9, Pin.OUT);#LSB
+A = Pin(9, Pin.OUT); #LSB
 B = Pin(10, Pin.OUT);
 C = Pin(11, Pin.OUT);
-D = Pin(12 Pin.OUT); #MSB
+D = Pin(12, Pin.OUT); #MSB
 
 #transistor pour activer l'incrément sur le 7 seg
-segUnit = Pin(6 Pin.OUT);
-segDiz = Pin(7 Pin.OUT); #deez nut
+segUnit = Pin(6, Pin.OUT);
+segDiz = Pin(7, Pin.OUT); #deez nut
 
 #Variable globalequi s'incrémente
 valeur = 0
@@ -28,7 +28,7 @@ def output_digit(digit):
 def display_thread():
     global valeur, segUnit, segDiz
     segDiz.value(0)
-    segUnit.valur(0)
+    segUnit.value(0)
     while True:
         unit = valeur % 10
         diz = valeur // 10
@@ -45,14 +45,14 @@ def display_thread():
 
 #Fonction incrémentation valeur
 def change_valeur(timer):
-    global ValueError
+    global valeur
     valeur += 1
     if valeur > 100 or valeur < 0 :
         valeur = 0
 
 def init():
     _thread.start_new_thread(display_thread, ()) #lancer le thread d'affichage
-    timer =Timer() #Lancer le timer pour incrémentation de valeur
+    timer = Timer(-1) #Lancer le timer pour incrémentation de valeur
     timer.init(freq=1, mode=Timer.PERIODIC, callback=change_valeur)
 def main_loop():
     while True:
