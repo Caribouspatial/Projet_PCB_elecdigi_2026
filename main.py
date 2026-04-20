@@ -1,356 +1,471 @@
 """
-=============================================================
-  SYSTÈME D'ALARME - Raspberry Pi Pico
-=============================================================
-  Composants :
-    - PIR HC-SR501        → GPIO 16
-    - Buzzer passif       → GPIO 15
-    - LED alarme active   → GPIO 14
-    - LED alarme inactive → GPIO 13
-    - LED1..LED4          → GPIO 0, 1, 2, 3
-    - RFID RC522          → SPI0 (SCK=6, MOSI=7, MISO=4, CS=5, RST=17)
-    - Afficheur 7-seg     → 4511 (A=9, B=10, C=11, D=12)
-                            transistors : unité=19, dizaine=20
-=============================================================
+╔══════════════════════════════════════════════════════════════╗
+║           SYSTÈME D'ALARME CONNECTÉE - Pico                  ║
+╠══════════════════════════════════════════════════════════════╣
+║  PINS CONFIRMÉES :                                           ║
+║   PIR HC-SR501     → GP16                                    ║
+║   Buzzer passif    → GP15                                    ║
+║   LED VERTE        → GP13   (désarmée)                       ║
+║   LED ROUGE        → GP14   (alarme / intrusion)             ║
+║   LED ORANGE 1     → GP0    (armement clignotant)            ║
+║   LED ORANGE 2     → GP1    (armement clignotant)            ║
+║   RFID SCK         → GP6                                     ║
+║   RFID MOSI        → GP7                                     ║
+║   RFID MISO        → GP4                                     ║
+║   RFID CS          → GP5                                     ║
+║   RFID RST         → GP17                                    ║
+║                                                              ║
+║  PINS À CONFIRMER                                            ║
+║   7-seg seg A      → GP8    ← TODO                           ║
+║   7-seg seg B      → GP9    ← TODO                           ║
+║   7-seg seg C      → GP10   ← TODO                           ║
+║   7-seg seg D      → GP11   ← TODO                           ║
+║   7-seg seg E      → GP12   ← TODO                           ║
+║   7-seg seg F      → GP18   ← TODO                           ║
+║   7-seg seg G      → GP19   ← TODO                           ║
+║   7-seg enable DIS1→ GP20   ← TODO (dizaines)                ║
+║   7-seg enable DIS2→ GP21   ← TODO (unités)                  ║
+╠══════════════════════════════════════════════════════════════╣
+║  ÉTATS :                                                     ║
+║   DESARMEE  → LED verte fixe                                 ║
+║   ARMEMENT  → 30s compte à rebours, orange flash, bips       ║
+║   ARMEE     → LED rouge fixe, PIR actif, 7seg "--"           ║
+║   INTRUSION → 10s pour désarmer, bips continus               ║
+║   ALARME    → Buzzer max, rouge flash, 7seg "--"             ║
+╚══════════════════════════════════════════════════════════════╝
 """
 
-from machine import Pin, SPI, PWM, Timer
+from machine import Pin, SPI, PWM
 import _thread
 import utime
-import time
-
-# ─────────────────────────────────────────────
-# Import du driver RFID (fichier mfrc522.py
-# doit être présent sur le Pico)
-# ─────────────────────────────────────────────
 from mfrc522 import MFRC522
 
+# ══════════════════════════════════════════════
+#  CONSTANTES TIMING
+# ══════════════════════════════════════════════
+DUREE_ARMEMENT_S   = 30    # secondes du compte à rebours armement
+DUREE_INTRUSION_S  = 10    # secondes avant alarme après détection PIR
+DOUBLE_BIP_SOUS_S  = 10    # en dessous de ce nb de secondes → double bip
 
-# ═════════════════════════════════════════════
-# 1.  CLASSES  (PIR, Buzzer)
-# ═════════════════════════════════════════════
-
-class PIRMotionSensor:
-    """Capteur de mouvement PIR (sortie digitale)."""
-
-    def __init__(self, pin=16):
-        self._pin = Pin(pin, Pin.IN)
-
-    def motion(self):
-        return self._pin.value() == 1
-
-    def read(self):
-        return self._pin.value()
-
-
-class PassiveBuzzer:
-    """Buzzer passif piloté par PWM."""
-
-    def __init__(self, pin=15):
-        self._pwm = PWM(Pin(pin))
-        self._pwm.duty_u16(0)
-
-    def beep(self, freq=1000, duration_ms=500):
-        self._pwm.freq(freq)
-        self._pwm.duty_u16(32768)
-        utime.sleep_ms(duration_ms)
-        self._pwm.duty_u16(0)
-
-    def alert(self):
-        """Bip d'alerte deux tonalités."""
-        for freq in [1500, 1000, 1500, 1000]:
-            self._pwm.freq(freq)
-            self._pwm.duty_u16(32768)
-            utime.sleep_ms(150)
-        self._pwm.duty_u16(0)
-
-    def off(self):
-        self._pwm.duty_u16(0)
-
-
-# ═════════════════════════════════════════════
-# 2.  INITIALISATIONS
-# ═════════════════════════════════════════════
-
-# --- PIR ---
-pir = PIRMotionSensor(pin=16)
-
-# --- Buzzer ---
-buzzer = PassiveBuzzer(pin=15)
-
-# --- LEDs d'état alarme ---
-led_alarme   = Pin(14, Pin.OUT)   # rouge  : alarme active / mouvement
-led_ok       = Pin(13, Pin.OUT)   # verte  : alarme désactivée / calme
-
-# --- LEDs de signalisation (chenillard) ---
-leds = [Pin(p, Pin.OUT) for p in (0, 1, 2, 3)]
-
-# --- RFID RC522 ---
-spi_rfid = SPI(
-    0,
-    baudrate=1_000_000,
-    polarity=0,
-    phase=0,
-    sck=Pin(6),
-    mosi=Pin(7),
-    miso=Pin(4)
-)
-rdr = MFRC522(spi=spi_rfid, gpioRst=Pin(17), gpioCs=Pin(5))
-
-# UID de la carte autorisée
+# ══════════════════════════════════════════════
+#  CARTE RFID AUTORISÉE  ← remplace avec ton UID
+# ══════════════════════════════════════════════
 CARTE_AUTORISEE = [99, 64, 137, 13, 167]
 
-# --- Afficheur 7 segments (via 4511) ---
-SEG_A = Pin(9,  Pin.OUT)   # LSB
-SEG_B = Pin(10, Pin.OUT)
-SEG_C = Pin(11, Pin.OUT)
-SEG_D = Pin(12, Pin.OUT)   # MSB
-seg_unite   = Pin(19, Pin.OUT)
-seg_dizaine = Pin(20, Pin.OUT)
+# ══════════════════════════════════════════════
+#  PINS
+# ══════════════════════════════════════════════
+PIN_PIR        = 16
+PIN_BUZZER     = 15
+PIN_LED_VERTE  = 13
+PIN_LED_ROUGE  = 14
+PIN_LED_ORA1   = 0
+PIN_LED_ORA2   = 1
 
+# 7-seg segments a→g  (à confirmer sur ton schéma)
+PIN_SEG_A      = 8
+PIN_SEG_B      = 9
+PIN_SEG_C      = 10
+PIN_SEG_D      = 11
+PIN_SEG_E      = 12
+PIN_SEG_F      = 18
+PIN_SEG_G      = 19
+PIN_DIS_DIZ    = 20   # transistor digit dizaines
+PIN_DIS_UNIT   = 21   # transistor digit unités
 
-# ═════════════════════════════════════════════
-# 3.  ÉTAT GLOBAL PARTAGÉ
-# ═════════════════════════════════════════════
+# RFID
+PIN_RFID_SCK   = 6
+PIN_RFID_MOSI  = 7
+PIN_RFID_MISO  = 4
+PIN_RFID_CS    = 5
+PIN_RFID_RST   = 17
 
-alarme_active      = True   # True = alarme armée
-nb_mouvements      = 0      # compteur affiché sur le 7-seg
-_affichage_valeur  = 0      # valeur lue par le thread d'affichage
-_lock              = _thread.allocate_lock()
+# ══════════════════════════════════════════════
+#  ÉTATS MACHINE
+# ══════════════════════════════════════════════
+ETAT_DESARMEE  = 0
+ETAT_ARMEMENT  = 1
+ETAT_ARMEE     = 2
+ETAT_INTRUSION = 3
+ETAT_ALARME    = 4
 
-# ── Délai d'entrée ───────────────────────────
-# Quand un mouvement est détecté, on attend DELAI_ENTREE_MS
-# avant de déclencher l'alarme. Ça laisse le temps de scanner la carte.
-DELAI_ENTREE_MS   = 10_000   # 10 secondes  ← modifie à ta guise
-DELAI_BIPS_MS     = 1_000    # bip de compte à rebours toutes les 1 s
+# ══════════════════════════════════════════════
+#  INITIALISATIONS HARDWARE
+# ══════════════════════════════════════════════
 
-en_compte_a_rebours = False   # True = on est dans le délai d'entrée
-debut_compte        = 0       # ticks_ms au moment où le délai a démarré
+# LEDs
+led_verte  = Pin(PIN_LED_VERTE, Pin.OUT)
+led_rouge  = Pin(PIN_LED_ROUGE, Pin.OUT)
+led_ora1   = Pin(PIN_LED_ORA1,  Pin.OUT)
+led_ora2   = Pin(PIN_LED_ORA2,  Pin.OUT)
 
+# PIR
+pir = Pin(PIN_PIR, Pin.IN)
 
-# ═════════════════════════════════════════════
-# 4.  THREAD D'AFFICHAGE 7 SEGMENTS
-# ═════════════════════════════════════════════
+# Buzzer
+_pwm = PWM(Pin(PIN_BUZZER))
+_pwm.duty_u16(0)
 
-def _output_digit(digit):
-    """Envoie 4 bits BCD au 4511."""
-    b = f'{int(digit):04b}'
-    SEG_A.value(int(b[-1]))
-    SEG_B.value(int(b[-2]))
-    SEG_C.value(int(b[-3]))
-    SEG_D.value(int(b[-4]))
+# 7 segments : liste ordonnée a, b, c, d, e, f, g
+_seg = [
+    Pin(PIN_SEG_A, Pin.OUT),
+    Pin(PIN_SEG_B, Pin.OUT),
+    Pin(PIN_SEG_C, Pin.OUT),
+    Pin(PIN_SEG_D, Pin.OUT),
+    Pin(PIN_SEG_E, Pin.OUT),
+    Pin(PIN_SEG_F, Pin.OUT),
+    Pin(PIN_SEG_G, Pin.OUT),
+]
+_dis_diz  = Pin(PIN_DIS_DIZ,  Pin.OUT)
+_dis_unit = Pin(PIN_DIS_UNIT, Pin.OUT)
 
+# RFID
+_spi = SPI(0, baudrate=1_000_000, polarity=0, phase=0,
+           sck=Pin(PIN_RFID_SCK), mosi=Pin(PIN_RFID_MOSI), miso=Pin(PIN_RFID_MISO))
+_rdr = MFRC522(spi=_spi, gpioRst=Pin(PIN_RFID_RST), gpioCs=Pin(PIN_RFID_CS))
+
+# ══════════════════════════════════════════════
+#  ÉTAT PARTAGÉ THREAD 7-SEG ↔ MAIN
+# ══════════════════════════════════════════════
+_lock       = _thread.allocate_lock()
+_seg_valeur = 0
+_seg_tirets = False
+
+# ══════════════════════════════════════════════
+#  TABLE 7 SEGMENTS (cathode commune)
+#  bits : a  b  c  d  e  f  g
+# ══════════════════════════════════════════════
+SEG_TABLE = {
+    0:   [1, 1, 1, 1, 1, 1, 0],
+    1:   [0, 1, 1, 0, 0, 0, 0],
+    2:   [1, 1, 0, 1, 1, 0, 1],
+    3:   [1, 1, 1, 1, 0, 0, 1],
+    4:   [0, 1, 1, 0, 0, 1, 1],
+    5:   [1, 0, 1, 1, 0, 1, 1],
+    6:   [1, 0, 1, 1, 1, 1, 1],
+    7:   [1, 1, 1, 0, 0, 0, 0],
+    8:   [1, 1, 1, 1, 1, 1, 1],
+    9:   [1, 1, 1, 1, 0, 1, 1],
+    '-': [0, 0, 0, 0, 0, 0, 1],
+    ' ': [0, 0, 0, 0, 0, 0, 0],
+}
+
+def _afficher_digit(sym):
+    bits = SEG_TABLE.get(sym, SEG_TABLE[' '])
+    for i, p in enumerate(_seg):
+        p.value(bits[i])
 
 def _display_thread():
-    """Thread dédié au multiplexage des deux digits (unité / dizaine)."""
-    global _affichage_valeur
-    seg_unite.value(0)
-    seg_dizaine.value(0)
+    """Thread dédié : multiplex 2 digits en permanence."""
+    _dis_diz.value(0)
+    _dis_unit.value(0)
     while True:
         with _lock:
-            val = _affichage_valeur % 100   # on affiche 00-99
+            val    = _seg_valeur
+            tirets = _seg_tirets
 
-        unite  = val % 10
-        dizaine = val // 10
+        d_diz  = '-' if tirets else (val // 10) % 10
+        d_unit = '-' if tirets else val % 10
 
-        _output_digit(unite)
-        seg_unite.value(1)
-        time.sleep_ms(5)
-        seg_unite.value(0)
+        _afficher_digit(d_diz)
+        _dis_diz.value(1)
+        utime.sleep_ms(5)
+        _dis_diz.value(0)
 
-        _output_digit(dizaine)
-        seg_dizaine.value(1)
-        time.sleep_ms(5)
-        seg_dizaine.value(0)
+        _afficher_digit(d_unit)
+        _dis_unit.value(1)
+        utime.sleep_ms(5)
+        _dis_unit.value(0)
 
+def set_display(val=None, tirets=False):
+    global _seg_valeur, _seg_tirets
+    with _lock:
+        _seg_tirets = tirets
+        if val is not None:
+            _seg_valeur = max(0, min(99, val))
 
-# ═════════════════════════════════════════════
-# 5.  FONCTIONS UTILITAIRES
-# ═════════════════════════════════════════════
+# ══════════════════════════════════════════════
+#  BUZZER
+# ══════════════════════════════════════════════
 
-def _set_leds_etat(alarme_on, mouvement=False):
-    """Met à jour les deux LEDs d'état."""
-    if alarme_on and mouvement:
-        led_alarme.value(1)
-        led_ok.value(0)
-    elif alarme_on:
-        led_alarme.value(0)
-        led_ok.value(1)
-    else:
-        led_alarme.value(0)
-        led_ok.value(1)
+def buz_on(freq=1000, vol=32768):
+    _pwm.freq(freq)
+    _pwm.duty_u16(vol)
 
+def buz_off():
+    _pwm.duty_u16(0)
 
-def _chenillard_once():
-    """Un passage complet du chenillard (non bloquant si < 400 ms)."""
-    for led in leds:
+def buz_bip(freq=1000, dur=80, vol=32768):
+    buz_on(freq, vol)
+    utime.sleep_ms(dur)
+    buz_off()
+
+def buz_double_bip():
+    buz_bip(1200, 80)
+    utime.sleep_ms(80)
+    buz_bip(1200, 80)
+
+def buz_long_fin():
+    """Bip long quand le compte à rebours arrive à 0."""
+    buz_on(1500)
+    utime.sleep_ms(900)
+    buz_off()
+
+def buz_desarm():
+    """Confirmation désarmement : 2 bips descendants."""
+    buz_bip(900, 150)
+    utime.sleep_ms(60)
+    buz_bip(650, 150)
+
+def buz_alarme_tick():
+    """Son d'alarme plein volume — appelé en boucle."""
+    buz_on(2000, 65535)
+    utime.sleep_ms(120)
+    buz_on(900, 65535)
+    utime.sleep_ms(120)
+
+# ══════════════════════════════════════════════
+#  LEDs
+# ══════════════════════════════════════════════
+
+def leds_off():
+    led_verte.value(0)
+    led_rouge.value(0)
+    led_ora1.value(0)
+    led_ora2.value(0)
+
+def leds_desarmee():
+    leds_off()
+    led_verte.value(1)
+
+def leds_armee():
+    leds_off()
+    led_rouge.value(1)
+
+# ══════════════════════════════════════════════
+#  RFID
+# ══════════════════════════════════════════════
+
+def lire_carte():
+    stat, _ = _rdr.request(_rdr.REQIDL)
+    if stat != _rdr.OK:
+        return None
+    stat, uid = _rdr.anticoll()
+    if stat != _rdr.OK:
+        return None
+    return uid
+
+# ══════════════════════════════════════════════
+#  BOOT
+# ══════════════════════════════════════════════
+
+def boot():
+    print("╔═══════════════════════════════╗")
+    print("║   ALARME CONNECTÉE - BOOT     ║")
+    print("╚═══════════════════════════════╝")
+    leds_off()
+    set_display(0)
+    for led in [led_verte, led_ora1, led_ora2, led_rouge]:
         led.value(1)
-        time.sleep_ms(80)
+        utime.sleep_ms(180)
         led.value(0)
+    buz_bip(900, 100)
+    utime.sleep_ms(60)
+    buz_bip(1100, 100)
+    utime.sleep_ms(60)
+    buz_bip(1300, 100)
+    leds_desarmee()
+    set_display(0)
+    print("État initial : DÉSARMÉE")
+    print("→ Passer la carte pour ARMER")
 
-
-def _flash_leds(times=3):
-    """Flash rapide de toutes les LEDs → alerte visuelle."""
-    for _ in range(times):
-        for led in leds:
-            led.value(1)
-        time.sleep_ms(100)
-        for led in leds:
-            led.value(0)
-        time.sleep_ms(100)
-
-
-def _verifier_rfid():
-    """
-    Lit une carte RFID.
-    Retourne True si une carte est détectée, False sinon.
-    Met à jour alarme_active en fonction de l'UID.
-    """
-    global alarme_active
-
-    stat, _ = rdr.request(rdr.REQIDL)
-    if stat != rdr.OK:
-        return False
-
-    stat, uid = rdr.anticoll()
-    if stat != rdr.OK:
-        return False
-
-    print("Carte détectée :", uid)
-
-    if uid == CARTE_AUTORISEE:
-        alarme_active = not alarme_active
-        if alarme_active:
-            print("🚨 Alarme ACTIVÉE par carte autorisée")
-            buzzer.beep(1200, 200)
-        else:
-            print("🔓 Alarme DÉSACTIVÉE par carte autorisée")
-            buzzer.beep(800, 200)
-    else:
-        print("⛔  Carte REFUSÉE – alarme maintenue")
-        buzzer.alert()
-        _flash_leds(4)
-
-    time.sleep_ms(800)   # anti double-lecture
-    return True
-
-
-# ═════════════════════════════════════════════
-# 6.  DÉMARRAGE
-# ═════════════════════════════════════════════
-
-def _boot_sequence():
-    """Séquence visuelle au démarrage."""
-    print("=== Démarrage système d'alarme ===")
-    # Chenillard x2
-    for _ in range(2):
-        _chenillard_once()
-    # Bip de confirmation
-    buzzer.beep(1000, 150)
-    utime.sleep_ms(80)
-    buzzer.beep(1200, 150)
-    # LEDs état initial
-    _set_leds_etat(alarme_active)
-    print("Système prêt – alarme ACTIVE")
-    print("Passer la carte pour activer / désactiver l'alarme")
-
-
-# ═════════════════════════════════════════════
-# 7.  BOUCLE PRINCIPALE
-# ═════════════════════════════════════════════
-
-def _bip_compte_a_rebours(secondes_restantes):
-    """Bip court dont la fréquence monte au fur et à mesure que le temps presse."""
-    freq = 800 + (DELAI_ENTREE_MS // 1000 - secondes_restantes) * 60
-    buzzer._pwm.freq(max(800, min(freq, 1800)))
-    buzzer._pwm.duty_u16(32768)
-    utime.sleep_ms(80)
-    buzzer._pwm.duty_u16(0)
-
+# ══════════════════════════════════════════════
+#  BOUCLE PRINCIPALE
+# ══════════════════════════════════════════════
 
 def main():
-    global nb_mouvements, _affichage_valeur
-    global en_compte_a_rebours, debut_compte, alarme_active
-
-    _boot_sequence()
-
-    # Lancer le thread d'affichage 7 segments
+    boot()
     _thread.start_new_thread(_display_thread, ())
 
-    derniere_valeur_pir = pir.read()
-    dernier_bip_ms      = 0   # pour espacer les bips du compte à rebours
+    etat          = ETAT_DESARMEE
+    t_phase       = utime.ticks_ms()   # tick de début de l'état courant
+    dernier_bip   = utime.ticks_ms()
+    dernier_flash = utime.ticks_ms()
+    flash_etat    = False
+    dernier_s     = -1                 # évite les prints répétés
 
     try:
         while True:
-            maintenant = utime.ticks_ms()
+            now       = utime.ticks_ms()
+            ecoule_ms = utime.ticks_diff(now, t_phase)
 
-            # ── A. Lecture RFID ──────────────────────────────
-            _verifier_rfid()
+            # ── Lecture RFID (dans tous les états) ──────────
+            uid      = lire_carte()
+            carte_ok = (uid == CARTE_AUTORISEE) if uid else False
+            if uid and not carte_ok:
+                print("⛔  Carte refusée")
+                buz_bip(400, 300, 20000)
 
-            # ── B. Gestion PIR + délai d'entrée ─────────────
-            etat_pir = pir.read()
+            # ════════════════════════════════════════════════
+            #  MACHINE À ÉTATS
+            # ════════════════════════════════════════════════
 
-            if alarme_active:
+            # ─────────────────────────────────────────────────
+            if etat == ETAT_DESARMEE:
+            # ─────────────────────────────────────────────────
+                leds_desarmee()
+                set_display(0)
 
-                # --- Mouvement détecté pour la 1ère fois → démarrer le délai ---
-                if etat_pir == 1 and not en_compte_a_rebours:
-                    en_compte_a_rebours = True
-                    debut_compte        = maintenant
-                    dernier_bip_ms      = maintenant
-                    print("⏳ Mouvement détecté – compte à rebours démarré (%d s)" % (DELAI_ENTREE_MS // 1000))
-                    led_alarme.value(1)
-                    led_ok.value(0)
+                if carte_ok:
+                    print("🔐 ARMEMENT → compte à rebours %ds" % DUREE_ARMEMENT_S)
+                    etat = ETAT_ARMEMENT
+                    t_phase       = now
+                    dernier_bip   = now
+                    dernier_flash = now
+                    flash_etat    = False
+                    dernier_s     = -1
 
-                # --- Pendant le compte à rebours ---
-                if en_compte_a_rebours:
-                    ecoule    = utime.ticks_diff(maintenant, debut_compte)
-                    restant_s = max(0, (DELAI_ENTREE_MS - ecoule) // 1000)
+            # ─────────────────────────────────────────────────
+            elif etat == ETAT_ARMEMENT:
+            # ─────────────────────────────────────────────────
+                restant_ms = max(0, DUREE_ARMEMENT_S * 1000 - ecoule_ms)
+                restant_s  = (restant_ms + 999) // 1000   # arrondi supérieur
 
-                    # Bips périodiques de compte à rebours
-                    if utime.ticks_diff(maintenant, dernier_bip_ms) >= DELAI_BIPS_MS:
-                        _bip_compte_a_rebours(restant_s)
-                        dernier_bip_ms = maintenant
-                        print("  ⏱  %d s restantes pour scanner la carte..." % restant_s)
+                # Affichage 7-seg : secondes restantes
+                set_display(restant_s)
 
-                    # Délai écoulé → alarme réelle
-                    if ecoule >= DELAI_ENTREE_MS:
-                        nb_mouvements += 1
-                        with _lock:
-                            _affichage_valeur = nb_mouvements
+                if restant_s != dernier_s:
+                    print("  ⏳ %ds" % restant_s)
+                    dernier_s = restant_s
 
-                        print("🚨 ALARME DÉCLENCHÉE (mouvement #%d)" % nb_mouvements)
-                        buzzer.alert()
-                        _flash_leds(3)
-                        en_compte_a_rebours = False
+                # Oranges : flash lent 800ms
+                if utime.ticks_diff(now, dernier_flash) >= 800:
+                    flash_etat = not flash_etat
+                    leds_off()
+                    led_ora1.value(flash_etat)
+                    led_ora2.value(flash_etat)
+                    dernier_flash = now
 
-            else:
-                # Alarme désactivée (carte scannée pendant le délai ou avant)
-                if en_compte_a_rebours:
-                    print("🔓 Carte scannée à temps – alarme annulée !")
-                    en_compte_a_rebours = False
-                led_alarme.value(0)
-                led_ok.value(1)
+                # Bips
+                if restant_s > DOUBLE_BIP_SOUS_S:
+                    # 1 bip / seconde
+                    if utime.ticks_diff(now, dernier_bip) >= 1000:
+                        buz_bip(1000, 80)
+                        dernier_bip = now
+                else:
+                    # Double bip accéléré : intervalle raccourcit avec le temps
+                    intervalle = max(250, restant_ms // 4)
+                    if utime.ticks_diff(now, dernier_bip) >= intervalle:
+                        buz_double_bip()
+                        dernier_bip = now
 
-            derniere_valeur_pir = etat_pir
+                # Carte pendant l'armement → annule
+                if carte_ok:
+                    print("🔓 Armement annulé")
+                    buz_desarm()
+                    leds_desarmee()
+                    set_display(0)
+                    etat    = ETAT_DESARMEE
+                    t_phase = now
 
-            # ── C. Mise à jour LEDs état ──────────────────────
-            if alarme_active and not en_compte_a_rebours:
-                # Armé, pas de mouvement en cours
-                led_alarme.value(0)
-                led_ok.value(1)
+                # Fin du compte à rebours → ARMÉE
+                elif restant_ms == 0:
+                    print("🚨 Système ARMÉ")
+                    buz_long_fin()
+                    leds_armee()
+                    set_display(tirets=True)
+                    etat      = ETAT_ARMEE
+                    t_phase   = now
+                    dernier_s = -1
 
-            utime.sleep_ms(100)
+            # ─────────────────────────────────────────────────
+            elif etat == ETAT_ARMEE:
+            # ─────────────────────────────────────────────────
+                leds_armee()
+                set_display(tirets=True)
+
+                if carte_ok:
+                    print("🔓 Désarmée")
+                    buz_desarm()
+                    leds_desarmee()
+                    set_display(0)
+                    etat    = ETAT_DESARMEE
+                    t_phase = now
+
+                elif pir.value() == 1:
+                    print("👀 MOUVEMENT ! %ds pour désarmer" % DUREE_INTRUSION_S)
+                    etat        = ETAT_INTRUSION
+                    t_phase     = now
+                    dernier_bip = now
+                    dernier_s   = -1
+
+            # ─────────────────────────────────────────────────
+            elif etat == ETAT_INTRUSION:
+            # ─────────────────────────────────────────────────
+                restant_ms = max(0, DUREE_INTRUSION_S * 1000 - ecoule_ms)
+                restant_s  = (restant_ms + 999) // 1000
+
+                set_display(restant_s)
+                leds_armee()   # rouge fixe
+
+                if restant_s != dernier_s:
+                    print("  ⚠️  %ds avant alarme" % restant_s)
+                    dernier_s = restant_s
+
+                # Petit bip continu (discret)
+                if utime.ticks_diff(now, dernier_bip) >= 500:
+                    buz_bip(800, 60, 15000)   # volume bas
+                    dernier_bip = now
+
+                if carte_ok:
+                    print("🔓 Désarmée à temps !")
+                    buz_desarm()
+                    leds_desarmee()
+                    set_display(0)
+                    etat    = ETAT_DESARMEE
+                    t_phase = now
+
+                elif restant_ms == 0:
+                    print("🚨 ALARME DÉCLENCHÉE !")
+                    buz_off()
+                    etat          = ETAT_ALARME
+                    t_phase       = now
+                    dernier_flash = now
+                    flash_etat    = False
+
+            # ─────────────────────────────────────────────────
+            elif etat == ETAT_ALARME:
+            # ─────────────────────────────────────────────────
+                set_display(tirets=True)
+
+                # Flash rouge rapide
+                if utime.ticks_diff(now, dernier_flash) >= 200:
+                    flash_etat = not flash_etat
+                    leds_off()
+                    led_rouge.value(flash_etat)
+                    dernier_flash = now
+
+                # Buzzer plein pot en continu
+                buz_alarme_tick()
+
+                # Seule la carte coupe l'alarme
+                if carte_ok:
+                    print("🔓 Alarme coupée !")
+                    buz_off()
+                    leds_desarmee()
+                    set_display(0)
+                    etat    = ETAT_DESARMEE
+                    t_phase = now
+
+            utime.sleep_ms(50)
 
     except KeyboardInterrupt:
-        buzzer.off()
-        for led in leds:
-            led.value(0)
-        led_alarme.value(0)
-        led_ok.value(0)
+        buz_off()
+        leds_off()
+        set_display(0)
         print("Système arrêté.")
 
-
-# ═════════════════════════════════════════════
-# 8.  POINT D'ENTRÉE  (se lance au démarrage)
-# ═════════════════════════════════════════════
+# ══════════════════════════════════════════════
+#  POINT D'ENTRÉE — se lance au démarrage
+# ══════════════════════════════════════════════
 main()
