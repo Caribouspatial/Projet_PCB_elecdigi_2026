@@ -1,36 +1,36 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
-║           SYSTÈME D'ALARME CONNECTÉE - Pico                 ║
+║           SYSTÈME D'ALARME CONNECTÉE - Pico                  ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  PINS CONFIRMÉES :                                           ║
-║   PIR HC-SR501     → GP16                                   ║
-║   Buzzer passif    → GP15                                   ║
-║   LED VERTE        → GP13   (désarmée)                      ║
-║   LED ROUGE        → GP14   (alarme / intrusion)            ║
-║   LED ORANGE 1     → GP0    (armement clignotant)           ║
-║   LED ORANGE 2     → GP1    (armement clignotant)           ║
-║   RFID SCK         → GP6                                    ║
-║   RFID MOSI        → GP7                                    ║
-║   RFID MISO        → GP4                                    ║
-║   RFID CS          → GP5                                    ║
-║   RFID RST         → GP17                                   ║
+║   PIR HC-SR501     → GP16                                    ║
+║   Buzzer passif    → GP15                                    ║
+║   LED VERTE        → GP13   (désarmée)                       ║
+║   LED ROUGE        → GP14   (alarme / intrusion)             ║
+║   LED ORANGE 1     → GP0    (armement clignotant)            ║
+║   LED ORANGE 2     → GP1    (armement clignotant)            ║
+║   RFID SCK         → GP6                                     ║
+║   RFID MOSI        → GP7                                     ║
+║   RFID MISO        → GP4                                     ║
+║   RFID CS          → GP5                                     ║
+║   RFID RST         → GP17                                    ║
 ║                                                              ║
-║  PINS À CONFIRMER (débugger avec toi) :                     ║
-║   7-seg seg A      → GP8    ← TODO                          ║
-║   7-seg seg B      → GP9    ← TODO                          ║
-║   7-seg seg C      → GP10   ← TODO                          ║
-║   7-seg seg D      → GP11   ← TODO                          ║
-║   7-seg seg E      → GP12   ← TODO                          ║
-║   7-seg seg F      → GP18   ← TODO                          ║
-║   7-seg seg G      → GP19   ← TODO                          ║
-║   7-seg enable DIS1→ GP20   ← TODO (dizaines)               ║
-║   7-seg enable DIS2→ GP21   ← TODO (unités)                 ║
+║  PINS À CONFIRMER                                            ║
+║   7-seg seg A      → GP8    ← TODO                           ║
+║   7-seg seg B      → GP9    ← TODO                           ║
+║   7-seg seg C      → GP10   ← TODO                           ║
+║   7-seg seg D      → GP11   ← TODO                           ║
+║   7-seg seg E      → GP12   ← TODO                           ║
+║   7-seg seg F      → GP18   ← TODO                           ║
+║   7-seg seg G      → GP19   ← TODO                           ║
+║   7-seg enable DIS1→ GP20   ← TODO (dizaines)                ║
+║   7-seg enable DIS2→ GP21   ← TODO (unités)                  ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  ÉTATS :                                                     ║
 ║   DESARMEE  → LED verte fixe                                 ║
-║   ARMEMENT  → 30s compte à rebours, orange flash, bips      ║
+║   ARMEMENT  → 30s compte à rebours, orange flash, bips       ║
 ║   ARMEE     → LED rouge fixe, PIR actif, 7seg "--"           ║
-║   INTRUSION → 10s pour désarmer, bips continus              ║
+║   INTRUSION → 10s pour désarmer, bips continus               ║
 ║   ALARME    → Buzzer max, rouge flash, 7seg "--"             ║
 ╚══════════════════════════════════════════════════════════════╝
 """
