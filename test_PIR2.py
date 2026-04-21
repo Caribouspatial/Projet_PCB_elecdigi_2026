@@ -3,18 +3,17 @@
 Works with HC-SR501, SR505, and other digital PIR motion sensors.
 
 Typical wiring:
-- VCC  -> VBUS (5V)
-- GND  -> Pin 38
-- OUT  -> GPIO 16
-- Buzzer (passif) -> GPIO 15
+- VCC -> 5V (or 3.3V on some modules)
+- GND -> GND
+- OUT -> GPIO pin (default in this file: GPIO 16)
 """
 
-from machine import Pin, PWM
+from machine import Pin
 import utime
 
 
 class PIRMotionSensor:
-    """Classe d'embalagge pour PIR motion sensor digital output."""
+    """Simple wrapper for PIR motion sensor digital output."""
 
     def __init__(self, pin=16, pull=None):
         if pull is None:
@@ -23,7 +22,7 @@ class PIRMotionSensor:
             self._pin = Pin(pin, Pin.IN, pull)
 
     def motion(self):
-        """Return True quand du mouvement est détecté."""
+        """Return True when motion is detected."""
         return self._pin.value() == 1
 
     def read(self):
@@ -48,39 +47,11 @@ class PIRMotionSensor:
                 return False
             utime.sleep_ms(poll_ms)
         return True
-
-
-class PassiveBuzzer:
-    """Simple wrapper for a passive buzzer via PWM."""
-
-    def __init__(self, pin=15):
-        self._pwm = PWM(Pin(pin))
-        self._pwm.duty_u16(0)  # Silence par défaut
-
-    def beep(self, freq=1000, duration_ms=500):
-        """Émet un bip simple."""
-        self._pwm.freq(freq)
-        self._pwm.duty_u16(32768)
-        utime.sleep_ms(duration_ms)
-        self._pwm.duty_u16(0)
-
-    def alert(self):
-        """Bip d'alerte à deux tonalités."""
-        for freq in [1500, 1000, 1500, 1000]:
-            self._pwm.freq(freq)
-            self._pwm.duty_u16(32768)
-            utime.sleep_ms(150)
-        self._pwm.duty_u16(0)
-
-    def off(self):
-        """Coupe le son."""
-        self._pwm.duty_u16(0)
-
-
+    
 sensor = PIRMotionSensor(pin=16)
-buzzer = PassiveBuzzer(pin=15)
 
-print("PIR démarré")
+print("PIR Motion Sensor demo started")
+print("Waiting for motion on GPIO16. Press Ctrl+C to stop.")
 
 last_state = sensor.read()
 print("Initial state:", last_state)
@@ -90,12 +61,10 @@ try:
         state = sensor.read()
         if state != last_state:
             if state == 1:
-                print("Alarme!! Mouvement détecté")
-                buzzer.alert()
-
+                print("Motion detected")
+            else:
+                print("No motion")
             last_state = state
         utime.sleep_ms(50)
-
 except KeyboardInterrupt:
-    buzzer.off()
     print("Demo stopped")

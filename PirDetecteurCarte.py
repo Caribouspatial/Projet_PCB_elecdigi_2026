@@ -5,10 +5,10 @@ import time
 # -----------------------------
 # PINS
 # -----------------------------
-pir = Pin(22, Pin.IN)
+pir = Pin(14, Pin.IN)
 
-led_mvt = Pin(14, Pin.OUT)      # LED mouvement / alarme active
-led_rien = Pin(15, Pin.OUT)     # LED aucun mouvement / alarme désactivée
+led_mvt = Pin(0, Pin.OUT)      # LED mouvement / alarme active
+led_rien = Pin(1, Pin.OUT)     # LED aucun mouvement / alarme désactivée
 
 # -----------------------------
 # RFID RC522
@@ -18,12 +18,12 @@ spi = SPI(
     baudrate=1000000,
     polarity=0,
     phase=0,
-    sck=Pin(2),
-    mosi=Pin(3),
-    miso=Pin(4)
+    sck=Pin(18),
+    mosi=Pin(19),
+    miso=Pin(16)
 )
 
-rdr = MFRC522(spi=spi, gpioRst=Pin(0), gpioCs=Pin(5))
+rdr = MFRC522(spi=spi, gpioRst=Pin(20), gpioCs=Pin(17))
 
 # UID de la bonne carte
 carte_autorisee = [99, 64, 137, 13, 167]
@@ -81,4 +81,4 @@ while True:
         led_mvt.value(0)
         led_rien.value(1)
 
-    time.sleep(0.2)
+    time.sleep_ms(100)
