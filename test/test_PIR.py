@@ -1,70 +1,48 @@
-"""PIR Motion Sensor helper for Raspberry Pi Pico / Pico W.
+# PIR Motion Sensor - Raspberry Pi Pico / Pico W
+# Wiring:
+# - VCC    -> VBUS (5V)
+# - GND    -> Pin 38
+# - OUT    -> GPIO 16
+# - Buzzer -> GPIO 15
+# - LED    -> GPIO 0
 
-Works with HC-SR501, SR505, and other digital PIR motion sensors.
-
-Typical wiring:
-- VCC -> 5V (or 3.3V on some modules)
-- GND -> GND
-- OUT -> GPIO pin (default in this file: GPIO 16)
-"""
-
-from machine import Pin
+from machine import Pin, PWM
 import utime
 
+# --- Initialisation ---
+pir    = Pin(16, Pin.IN)
+led    = Pin(0, Pin.OUT)
+buzzer = PWM(Pin(15))
+buzzer.duty_u16(0)
 
-class PIRMotionSensor:
-    """Simple wrapper for PIR motion sensor digital output."""
+# --- Fonctions ---
+def alert():
+    led.on()
+    for freq in [1500, 1000, 1500, 1000]:
+        buzzer.freq(freq)
+        buzzer.duty_u16(32768)
+        utime.sleep_ms(150)
+    buzzer.duty_u16(0)
+    led.off()
 
-    def __init__(self, pin=16, pull=None):
-        if pull is None:
-            self._pin = Pin(pin, Pin.IN)
-        else:
-            self._pin = Pin(pin, Pin.IN, pull)
+# --- Main ---
+print("PIR démarré - GPIO16 | Buzzer GPIO15 | LED GPIO0")
 
-    def motion(self):
-        """Return True when motion is detected."""
-        return self._pin.value() == 1
-
-    def read(self):
-        """Return raw digital state (0 or 1)."""
-        return self._pin.value()
-
-    def wait_for_motion(self, timeout_ms=None, poll_ms=20):
-        """
-        Block until motion is detected.
-
-        Returns:
-            True if motion detected, False if timeout elapsed.
-        """
-        if timeout_ms is None:
-            while not self.motion():
-                utime.sleep_ms(poll_ms)
-            return True
-
-        start = utime.ticks_ms()
-        while not self.motion():
-            if utime.ticks_diff(utime.ticks_ms(), start) >= timeout_ms:
-                return False
-            utime.sleep_ms(poll_ms)
-        return True
-    
-sensor = PIRMotionSensor(pin=16)
-
-print("PIR Motion Sensor demo started")
-print("Waiting for motion on GPIO16. Press Ctrl+C to stop.")
-
-last_state = sensor.read()
-print("Initial state:", last_state)
+last_state = pir.value()
 
 try:
     while True:
-        state = sensor.read()
+        state = pir.value()
         if state != last_state:
             if state == 1:
-                print("Motion detected")
+                print("Alarme !! Mouvement détecté")
+                alert()
             else:
-                print("No motion")
+                print("Fin de mouvement")
             last_state = state
-        utime.sleep_ms(50)
+        utime.sleep_ms(100)
+
 except KeyboardInterrupt:
-    print("Demo stopped")
+    buzzer.duty_u16(0)
+    led.off()
+    print("Programme arrêté")
