@@ -1,5 +1,5 @@
 from machine import Pin, SPI
-from mfrc522 import MFRC522
+from code_legacy.mfrc522 import MFRC522
 import time
 
 # -----------------------------

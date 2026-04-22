@@ -1,12 +1,7 @@
-from machine import Pin, SPI, PWM
-from mfrc522 import MFRC522
+from machine import Pin, PWM
+from code_legacy.mfrc522 import MFRC522
 import time
-
-# --- CONFIGURATION MATÉRIELLE ---
-
-# RFID (SPI 1)
-spi = SPI(1, baudrate=1000000, polarity=0, phase=0, sck=Pin(14), mosi=Pin(11), miso=Pin(12))
-rdr = MFRC522(spi=spi, gpioRst=Pin(20), gpioCs=Pin(17))
+from main_v2 import rdr
 
 # Dictionnaire des badges autorisés
 # Format : (liste_uid) : "Nom de la personne"
@@ -52,11 +47,11 @@ def bip_erreur():
     buzzer.freq(400); buzzer.duty_u16(32768); time.sleep(0.5); buzzer.duty_u16(0)
 
 index_led = 0
-def sirene_intrusion():
+# Allumage défilant des 3 LEDs
+def buzzer_intrusion():
     global index_led
     for freq in [1500, 800]:
         buzzer.freq(freq); buzzer.duty_u16(32768)
-        # Allumage défilant des 3 LEDs
         for i in range(3):
             leds_alerte[i].value(1 if i == index_led else 0)
         index_led = (index_led + 1) % 3
@@ -79,20 +74,20 @@ while True:
     if stat == rdr.OK:
         stat, uid = rdr.anticoll()
         if stat == rdr.OK:
-            uid_tuple = tuple(uid) # On transforme en tuple pour comparer avec le dictionnaire
+            uid_tuple = tuple(uid)
             
             if uid_tuple in BADGES_AUTORISES:
                 nom_utilisateur = BADGES_AUTORISES[uid_tuple]
                 
                 if not alarme_armee:
-                    print(f"✅ Bonjour {nom_utilisateur}. Armement...")
+                    print(f"Bonjour {nom_utilisateur}. Armement...")
                     bip_confirmation()
                     run_timer(10)
                     alarme_armee = True
                     led_alarme.value(1)
-                    print("🚨 ALARME ACTIVÉE")
+                    print("ALARME ACTIVÉE")
                 else:
-                    print(f"🔓 Désactivation par {nom_utilisateur}")
+                    print(f"Désactivation par {nom_utilisateur}")
                     alarme_armee = False
                     intrusion_detectee = False
                     led_alarme.value(0)
@@ -102,11 +97,11 @@ while True:
                 
                 time.sleep(2) # Anti-rebond
             else:
-                print("❌ Badge INCONNU !")
+                print("Badge INCONNU !")
                 bip_erreur()
                 time.sleep(1)
 
-    # 2. Gestion de l'Intrusion
+    # 2. Gestion de détection par le PIR
     if alarme_armee:
         if pir.value() == 1:
             if not intrusion_detectee:
@@ -114,6 +109,5 @@ while True:
             intrusion_detectee = True
         
         if intrusion_detectee:
-            sirene_intrusion()
-            
+            buzzer_intrusion()
     time.sleep_ms(50)

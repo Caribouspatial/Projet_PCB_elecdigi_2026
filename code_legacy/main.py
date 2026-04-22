@@ -38,7 +38,7 @@
 from machine import Pin, SPI, PWM
 import _thread
 import utime
-from mfrc522 import MFRC522
+from code_legacy.mfrc522 import MFRC522
 
 # ══════════════════════════════════════════════
 #  CONSTANTES TIMING

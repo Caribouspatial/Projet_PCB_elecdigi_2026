@@ -1,5 +1,5 @@
 from machine import Pin, SPI, PWM
-from mfrc522 import MFRC522
+from code_legacy.mfrc522 import MFRC522
 import time
 import _thread
 
