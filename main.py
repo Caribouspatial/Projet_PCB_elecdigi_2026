@@ -303,7 +303,7 @@ def main():
             uid      = lire_carte()
             carte_ok = (uid == CARTE_AUTORISEE) if uid else False
             if uid and not carte_ok:
-                print("⛔  Carte refusée")
+                print("  Carte refusée")
                 buz_bip(400, 300, 20000)
 
             # ════════════════════════════════════════════════
@@ -317,7 +317,7 @@ def main():
                 set_display(0)
 
                 if carte_ok:
-                    print("🔐 ARMEMENT → compte à rebours %ds" % DUREE_ARMEMENT_S)
+                    print(" ARMEMENT → compte à rebours %ds" % DUREE_ARMEMENT_S)
                     etat = ETAT_ARMEMENT
                     t_phase       = now
                     dernier_bip   = now
@@ -335,7 +335,7 @@ def main():
                 set_display(restant_s)
 
                 if restant_s != dernier_s:
-                    print("  ⏳ %ds" % restant_s)
+                    print(" %ds" % restant_s)
                     dernier_s = restant_s
 
                 # Oranges : flash lent 800ms
@@ -370,7 +370,7 @@ def main():
 
                 # Fin du compte à rebours → ARMÉE
                 elif restant_ms == 0:
-                    print("🚨 Système ARMÉ")
+                    print(" Système ARMÉ")
                     buz_long_fin()
                     leds_armee()
                     set_display(tirets=True)
@@ -385,7 +385,7 @@ def main():
                 set_display(tirets=True)
 
                 if carte_ok:
-                    print("🔓 Désarmée")
+                    print(" Désarmée")
                     buz_desarm()
                     leds_desarmee()
                     set_display(0)
@@ -409,7 +409,7 @@ def main():
                 leds_armee()   # rouge fixe
 
                 if restant_s != dernier_s:
-                    print("  ⚠️  %ds avant alarme" % restant_s)
+                    print("  %ds avant alarme" % restant_s)
                     dernier_s = restant_s
 
                 # Petit bip continu (discret)
@@ -418,7 +418,7 @@ def main():
                     dernier_bip = now
 
                 if carte_ok:
-                    print("🔓 Désarmée à temps !")
+                    print(" Désarmée à temps !")
                     buz_desarm()
                     leds_desarmee()
                     set_display(0)
@@ -426,7 +426,7 @@ def main():
                     t_phase = now
 
                 elif restant_ms == 0:
-                    print("🚨 ALARME DÉCLENCHÉE !")
+                    print(" ALARME DÉCLENCHÉE !")
                     buz_off()
                     etat          = ETAT_ALARME
                     t_phase       = now
