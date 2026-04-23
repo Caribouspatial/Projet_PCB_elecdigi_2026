@@ -20,7 +20,7 @@ import time
 from mfrc522 import MFRC522
 
 # ══════════════════════════════════════════════════════════════
-#  ⚙️  CONFIGURATION
+#    CONFIGURATION
 # ══════════════════════════════════════════════════════════════
 
 WIFI_SSID            = "Pico_test"
