@@ -23,8 +23,8 @@ from mfrc522 import MFRC522
 #    CONFIGURATION
 # ══════════════════════════════════════════════════════════════
 
-WIFI_SSID            = "Pico_test"
-WIFI_PASSWORD        = "12345678"
+WIFI_SSID            = "Capoué"
+WIFI_PASSWORD        = "pxkz36zx8v82ui7"
 
 SUPABASE_URL         = "https://aduaxoxnhfpbzybxrhye.supabase.co"
 SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdWF4b3huaGZwYnp5YnhyaHllIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTU0Nzc5NSwiZXhwIjoyMDkxMTIzNzk1fQ.qLAOO6sd_QVOiJjrc33OYzeU-qPpFhHV92IM-JRzkAM"

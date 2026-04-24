@@ -1,7 +1,7 @@
 from machine import Pin, PWM
-from code_legacy.mfrc522 import MFRC522
+from mfrc522 import MFRC522
 import time
-from main_v2 import rdr
+from main_v6 import rdr
 
 # Dictionnaire des badges autorisés
 # Format : (liste_uid) : "Nom de la personne"

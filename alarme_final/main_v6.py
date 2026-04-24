@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
-║  ALARME CONNECTÉE — Pico W  +  Supabase  — v7               ║
+║  ALARME CONNECTÉE — Pico W  +  Supabase  — v7                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  v7 :                                                        ║
 ║  - Machine à états = copie EXACTE du code fourni             ║

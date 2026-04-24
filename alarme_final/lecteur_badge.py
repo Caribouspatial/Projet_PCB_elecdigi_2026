@@ -1,6 +1,6 @@
 from mfrc522 import MFRC522
 import time
-from main_v2 import rdr
+from main_v6 import rdr
 
 print("--- SCANNEUR DE BADGE ---")
 print("Approchez votre nouveau badge du lecteur...")
