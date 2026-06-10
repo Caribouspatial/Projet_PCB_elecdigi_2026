@@ -439,7 +439,7 @@ def main():
                            "Badge inconnu presente", {"uid": list(uid)})
 
         # ══════════════════════════════════════════════════════
-        #  MACHINE À ÉTATS — copie EXACTE du code fourni
+        #  MACHINE À ÉTATS                              
         #  Seuls ajouts : sb_log() et sb_update_system_state()
         # ══════════════════════════════════════════════════════
 
