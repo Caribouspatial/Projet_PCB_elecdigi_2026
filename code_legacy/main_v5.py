@@ -1,9 +1,9 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
-║  ALARME CONNECTÉE — Pico W  +  Supabase  — v7               ║
+║  ALARME CONNECTÉE — Pico W  +  Supabase  — v7                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  v7 :                                                        ║
-║  - Machine à états = copie EXACTE du code fourni             ║
+║  - Machine à états                                           ║
 ║  - PIR optimisé : vérifié EN PREMIER avant le scan RFID      ║
 ║    (élimine le délai dû à la lecture SPI du lecteur RFID)    ║
 ║  - Log "alarm_sounding" envoyé UNE SEULE FOIS au moment      ║
